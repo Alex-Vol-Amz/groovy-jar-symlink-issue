@@ -1,0 +1,68 @@
+import java.nio.file.Files
+
+plugins {
+    id 'groovy'
+}
+
+repositories {
+    mavenCentral()
+}
+
+group = 'org.example'
+version = '1.0-SNAPSHOT'
+description = 'GroovyJarIssue'
+
+java.sourceCompatibility = JavaVersion.VERSION_1_8
+
+configurations {
+    groovyDependenciesForTest
+}
+
+def allGroovyLibs = [
+        "groovy",
+        "groovy-ant", "groovy-astbuilder", "groovy-console", "groovy-datetime", "groovy-dateutil",
+        "groovy-nio", "groovy-sql", "groovy-test",
+        "groovy-templates", "groovy-json", "groovy-xml", "groovy-groovydoc"
+]
+
+dependencies {
+    allGroovyLibs.forEach {
+        groovyDependenciesForTest("org.apache.groovy:${it}:4.+") {
+            transitive = false
+        }
+    }
+}
+
+task copyGroovyJars(type: Copy) {
+    into 'groovy-jars'
+    from configurations.groovyDependenciesForTest
+}
+
+task createGroovyJarSymlinks {
+    def symlinkFarm = file('groovy-symlinks')
+    inputs.files copyGroovyJars.outputs
+    outputs.dir symlinkFarm
+
+    doLast {
+        fileTree('groovy-jars').forEach { File groovyJar ->
+            String name = 'adjusted-name-' + groovyJar.name
+            java.nio.file.Path symlink = java.nio.file.Path.of(symlinkFarm.absolutePath, name)
+            java.nio.file.Path target = groovyJar.toPath()
+            if (!symlink.toFile().exists()) {
+                Files.createSymbolicLink(symlink, target)
+            }
+        }
+    }
+}
+
+tasks.named('compileGroovy') {
+    dependsOn createGroovyJarSymlinks
+}
+
+dependencies {
+    if (findProperty('useSymlinks')) {
+        implementation(fileTree('groovy-symlinks'))
+    } else {
+        implementation(fileTree('groovy-jars'))
+    }
+}
